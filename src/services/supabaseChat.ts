@@ -208,9 +208,11 @@ class SupabaseChatService {
 
   async deactivateAllClones(): Promise<void> {
     try {
+      // Update all clones where is_active is true
       const { error } = await supabase
         .from('clones')
-        .update({ is_active: false });
+        .update({ is_active: false })
+        .eq('is_active', true);
 
       if (error) throw error;
     } catch (error) {

@@ -113,16 +113,30 @@ export const ChatbotPage: React.FC<ChatbotPageProps> = ({ onNavigateBack }) => {
 
   const clearChat = async () => {
     try {
-      await chatMemoryService.clearMessages(user?.id);
-      await supabaseChatService.deactivateAllClones();
+      // First deactivate any active clones
+      if (activeClone) {
+        await supabaseChatService.updateClone(activeClone.id, { is_active: false });
+        setActiveClone(null);
+        localStorage.removeItem('activeClone');
+      }
+
+      // Then clear messages
+      if (user?.id) {
+        await chatMemoryService.clearMessages(user.id);
+      } else {
+        // For non-authenticated users, just clear local storage
+        chatMemoryService.clearMessages();
+      }
       
+      // Reset the UI state
       setMessages([]);
-      setActiveClone(null);
-      localStorage.removeItem('activeClone');
-      toast.success('Chat cleared');
+      setInput('');
+      setIsLoading(false);
+      
+      toast.success('Chat cleared successfully');
     } catch (error) {
       console.error('Error clearing chat:', error);
-      toast.error('Failed to clear chat');
+      toast.error('Failed to clear chat. Please try again.');
     }
   };
 
