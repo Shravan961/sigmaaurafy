@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import * as React from "react";
+import { Button } from "../../../components/ui/button";
+import { Input } from "../../../components/ui/input";
+import { Card, CardContent } from "../../../components/ui/card";
+import { Badge, badgeVariants } from "../../../components/ui/badge";
 import { Loader2, Search, ShoppingCart, ExternalLink, Star } from 'lucide-react';
 import { toast } from "sonner";
-import { GROQ_API_KEY, GROQ_MODEL } from '@/utils/constants';
+import { GROQ_API_KEY, GROQ_MODEL } from '../../../utils/constants';
+import { cn } from "../../../lib/utils";
 
 interface Product {
   name: string;
@@ -25,88 +26,106 @@ interface EasyShoppingToolProps {
   onSendToChat: (message: string) => void;
 }
 
+// Simple hash function for generating product IDs
+const simpleHash = (str: string): string => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16).substring(0, 10);
+};
+
 export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat }) => {
-  const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [query, setQuery] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [products, setProducts] = React.useState<Product[]>([]);
 
-  const generateProductUrl = (store: string, productName: string, product: Product): string => {
-    const encodedProduct = encodeURIComponent(productName);
-    const cleanProductName = productName.toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '');
+  const generateProductUrl = async (store: string, productName: string, product: Product): Promise<string> => {
+    try {
+      // First try to use product ID if available
+      if (product.productId || product.sku) {
+        const id = product.productId || product.sku;
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${GROQ_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: GROQ_MODEL,
+            messages: [
+              {
+                role: 'system',
+                content: `You are a product URL expert. Given a store name, product name, and product ID, generate the most accurate direct product URL. Only return the URL, nothing else. Make sure the URL follows the store's actual URL pattern.`
+              },
+              {
+                role: 'user',
+                content: `Generate a direct product URL for:\nStore: ${store}\nProduct: ${productName}\nProduct ID: ${id}`
+              }
+            ],
+            temperature: 0.2,
+            max_tokens: 100
+          })
+        });
 
-    // If we have a product ID or SKU, try to use it for direct product URLs
-    if (product.productId || product.sku) {
-      const id = product.productId || product.sku;
-      const storeProductUrls: { [key: string]: string } = {
-        'Amazon': `https://www.amazon.com/dp/${id}`,
-        'Walmart': `https://www.walmart.com/ip/${id}`,
-        'Best Buy': `https://www.bestbuy.com/site/searchpage.jsp?st=${id}&_dyncharset=UTF-8`,
-        'Target': `https://www.target.com/p/a/${id}`,
-        'eBay': `https://www.ebay.com/itm/${id}`,
-        'Newegg': `https://www.newegg.com/p/${id}`,
-        'B&H Photo': `https://www.bhphotovideo.com/c/product/${id}`,
-        'Micro Center': `https://www.microcenter.com/product/${id}`,
-        'ASOS': `https://www.asos.com/product/${id}`,
-        'Wayfair': `https://www.wayfair.com/product/id/${id}`,
-        'IKEA': `https://www.ikea.com/us/en/p/${id}`,
-        'Home Depot': `https://www.homedepot.com/p/${id}`,
-        'REI': `https://www.rei.com/product/${id}`,
-        'Dick\'s': `https://www.dickssportinggoods.com/p/${id}`,
-        'Barnes & Noble': `https://www.barnesandnoble.com/w/${id}`,
-        'Sephora': `https://www.sephora.com/product/${id}`,
-        'Ulta': `https://www.ulta.com/p/${id}`,
-      };
-
-      if (storeProductUrls[store]) {
-        return storeProductUrls[store];
+        if (response.ok) {
+          const data = await response.json();
+          const url = data.choices[0]?.message?.content?.trim();
+          if (url && url.startsWith('http')) {
+            return url;
+          }
+        }
       }
-    }
 
-    // If no product ID, try to create SEO-friendly URLs
-    const seoUrls: { [key: string]: string } = {
-      'Amazon': `https://www.amazon.com/s?k=${encodedProduct}&rh=p_72%3A2661618011`,
-      'Walmart': `https://www.walmart.com/browse/${cleanProductName}/_/N-${encodedProduct}`,
-      'Best Buy': `https://www.bestbuy.com/site/${cleanProductName}/searchpage.jsp`,
-      'Target': `https://www.target.com/s?searchTerm=${encodedProduct}&sortBy=relevance`,
-      'eBay': `https://www.ebay.com/sch/i.html?_nkw=${encodedProduct}&_sop=12`,
-      'Newegg': `https://www.newegg.com/p/pl?d=${encodedProduct}&N=4131`,
-      'B&H Photo': `https://www.bhphotovideo.com/c/product/${cleanProductName}`,
-      'Micro Center': `https://www.microcenter.com/search/${cleanProductName}?sortBy=match`,
-      'ASOS': `https://www.asos.com/${cleanProductName}?q=${encodedProduct}`,
-      'H&M': `https://www2.hm.com/en_us/productpage/${cleanProductName}`,
-      'Zara': `https://www.zara.com/us/en/products/${cleanProductName}`,
-      'Wayfair': `https://www.wayfair.com/keyword.php?keyword=${encodedProduct}&filters=categories:${cleanProductName}`,
-      'IKEA': `https://www.ikea.com/us/en/cat/${cleanProductName}-products/`,
-      'Home Depot': `https://www.homedepot.com/b/${cleanProductName}/_/N-${encodedProduct}`,
-      'REI': `https://www.rei.com/c/${cleanProductName}?q=${encodedProduct}`,
-      'Dick\'s': `https://www.dickssportinggoods.com/f/${cleanProductName}?searchTerm=${encodedProduct}`,
-      'Barnes & Noble': `https://www.barnesandnoble.com/s/${encodedProduct}?&sortBy=bestMatch`,
-      'Books-A-Million': `https://www.booksamillion.com/search?query=${encodedProduct}&filter=product_type:books`,
-      'Sephora': `https://www.sephora.com/shop/${cleanProductName}?keyword=${encodedProduct}`,
-      'Ulta': `https://www.ulta.com/shop/${cleanProductName}?q=${encodedProduct}`,
-    };
+      // If no product ID or the above failed, generate a search URL
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          messages: [
+            {
+              role: 'system',
+              content: `You are a product URL expert. Given a store name and product name, generate the most accurate search URL that would show this product. Only return the URL, nothing else. Make sure the URL follows the store's actual search URL pattern and includes necessary parameters.`
+            },
+            {
+              role: 'user',
+              content: `Generate a search URL for:\nStore: ${store}\nProduct: ${productName}`
+            }
+          ],
+          temperature: 0.2,
+          max_tokens: 100
+        })
+      });
 
-    // If it's not a known store, try to generate a smart product URL
-    if (!seoUrls[store]) {
+      if (response.ok) {
+        const data = await response.json();
+        const url = data.choices[0]?.message?.content?.trim();
+        if (url && url.startsWith('http')) {
+          return url;
+        }
+      }
+
+      // Fallback to basic search URL if AI generation fails
+      const encodedProduct = encodeURIComponent(productName);
       const cleanStoreName = store.toLowerCase()
         .replace(/[^a-z0-9]/g, '')
         .replace(/\s+/g, '');
-      
-      // Try common product URL patterns
-      const possibleUrls = [
-        `https://www.${cleanStoreName}.com/p/${cleanProductName}`,
-        `https://www.${cleanStoreName}.com/product/${cleanProductName}`,
-        `https://www.${cleanStoreName}.com/${cleanProductName}`,
-        `https://www.${cleanStoreName}.com/products/${cleanProductName}`,
-      ];
-
-      return possibleUrls[0];
+      return `https://www.${cleanStoreName}.com/search?q=${encodedProduct}`;
+    } catch (error) {
+      console.error('Error generating product URL:', error);
+      // Fallback to basic search URL
+      const encodedProduct = encodeURIComponent(productName);
+      const cleanStoreName = store.toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .replace(/\s+/g, '');
+      return `https://www.${cleanStoreName}.com/search?q=${encodedProduct}`;
     }
-
-    return seoUrls[store];
   };
 
   const generateFallbackProducts = async (productName: string): Promise<Product[]> => {
@@ -130,9 +149,11 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
 
     const basePrice = Math.random() * 50 + 20;
     
-    return relevantStores.map((store, index) => {
+    return Promise.all(relevantStores.map(async (store, index) => {
       // Generate a mock product ID based on store and product
-      const mockId = Buffer.from(`${store}-${productName}-${index}`).toString('base64').substring(0, 10);
+      const mockId = simpleHash(`${store}-${productName}-${index}`);
+      
+      const url = await generateProductUrl(store, productName, { productId: mockId } as Product);
       
       return {
         name: `${productName} - ${store} Selection`,
@@ -140,12 +161,12 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
         price: `$${(basePrice + (index * 5) + Math.random() * 10).toFixed(2)}`,
         store: store,
         productId: mockId,
-        url: generateProductUrl(store, productName, { productId: mockId } as Product),
+        url: url,
         rating: `${(Math.random() * 1.5 + 3.5).toFixed(1)}/5`,
         availability: Math.random() > 0.2 ? 'In Stock' : 'Limited Stock',
         shipping: Math.random() > 0.3 ? 'Free Shipping' : `$${(Math.random() * 10 + 5).toFixed(2)} Shipping`
       };
-    });
+    }));
   };
 
   const generateProductData = async (productName: string): Promise<Product[]> => {
@@ -161,11 +182,11 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
           messages: [
             {
               role: 'system',
-              content: `You are a product research assistant. Generate realistic product listings with names, descriptions, prices, and store information. Consider the type of product when suggesting stores. Return exactly 4 products in JSON format with fields: name, description, price, store, rating, availability, shipping, productId. Make the data realistic and varied across different relevant stores. The productId should be a realistic product identifier for that store.`
+              content: `You are a product research assistant. Generate realistic product listings with names, descriptions, prices, and store information. Consider the type of product when suggesting stores. Return exactly 4 products in JSON format with fields: name, description, price, store, rating, availability, shipping, productId. Make the data realistic and varied across different relevant stores. The productId should be a realistic product identifier for that store's format (e.g., B0123456789 for Amazon, numbers for other stores).`
             },
             {
               role: 'user',
-              content: `Generate 4 realistic product listings for: ${productName}. Choose stores that would actually sell this type of product. Make sure each has a unique name, detailed description, realistic price, proper store information, and a realistic product ID for that store. Include availability and shipping info.`
+              content: `Generate 4 realistic product listings for: ${productName}. Choose stores that would actually sell this type of product. Make sure each has a unique name, detailed description, realistic price, proper store information, and a realistic product ID for that store's format. Include availability and shipping info.`
             }
           ],
           temperature: 0.7,
@@ -184,10 +205,11 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
         const jsonMatch = content.match(/\[[\s\S]*\]/);
         if (jsonMatch) {
           const products = JSON.parse(jsonMatch[0]);
-          return products.map((product: Product) => ({
+          const productsWithUrls = await Promise.all(products.map(async (product: Product) => ({
             ...product,
-            url: generateProductUrl(product.store, productName, product)
-          }));
+            url: await generateProductUrl(product.store, productName, product)
+          })));
+          return productsWithUrls;
         }
       } catch (parseError) {
         console.error('JSON parse error:', parseError);
@@ -277,9 +299,9 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
                         <h3 className="font-semibold text-foreground line-clamp-2 text-sm">
                           {product.name}
                         </h3>
-                        <Badge className="ml-2 shrink-0 text-xs">
+                        <div className={cn(badgeVariants({ variant: "secondary" }), "ml-2 shrink-0 text-xs")}>
                           {product.store}
-                        </Badge>
+                        </div>
                       </div>
                       
                       <p className="text-xs text-muted-foreground line-clamp-3">
