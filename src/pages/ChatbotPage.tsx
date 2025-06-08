@@ -350,14 +350,32 @@ export const ChatbotPage: React.FC<ChatbotPageProps> = ({ onNavigateBack }) => {
         </div>
         
         <div className="flex items-center space-x-2">
-          <Button variant="ghost" size="sm" onClick={clearChat} className="rounded-full">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={clearChat} 
+            className="rounded-full hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+            title="Clear chat history"
+          >
             <Trash2 className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setShowToolkit(true)} className="rounded-full">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setShowToolkit(true)} 
+            className="rounded-full"
+            title="Open toolkit"
+          >
             <Wrench className="h-5 w-5" />
           </Button>
           {activeTool && (
-            <Button variant="ghost" size="sm" onClick={handleCloseTool} className="rounded-full">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={handleCloseTool} 
+              className="rounded-full"
+              title="Close active tool"
+            >
               <X className="h-4 w-4" />
             </Button>
           )}
