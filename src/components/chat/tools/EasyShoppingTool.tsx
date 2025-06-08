@@ -17,6 +17,8 @@ interface Product {
   image?: string;
   availability?: string;
   shipping?: string;
+  productId?: string;
+  sku?: string;
 }
 
 interface EasyShoppingToolProps {
@@ -28,61 +30,86 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
 
-  const generateStoreUrl = (store: string, productName: string): string => {
+  const generateProductUrl = (store: string, productName: string, product: Product): string => {
     const encodedProduct = encodeURIComponent(productName);
-    const storeUrls: { [key: string]: string } = {
-      // Major retailers
-      'Amazon': `https://www.amazon.com/s?k=${encodedProduct}`,
-      'Walmart': `https://www.walmart.com/search?q=${encodedProduct}`,
-      'Best Buy': `https://www.bestbuy.com/site/searchpage.jsp?st=${encodedProduct}`,
-      'Target': `https://www.target.com/s?searchTerm=${encodedProduct}`,
-      'eBay': `https://www.ebay.com/sch/i.html?_nkw=${encodedProduct}`,
-      'Newegg': `https://www.newegg.com/p/pl?d=${encodedProduct}`,
-      // Electronics
-      'B&H Photo': `https://www.bhphotovideo.com/c/search?q=${encodedProduct}`,
-      'Micro Center': `https://www.microcenter.com/search/${encodedProduct}`,
-      // Fashion
-      'ASOS': `https://www.asos.com/search/?q=${encodedProduct}`,
-      'H&M': `https://www2.hm.com/en_us/search-results.html?q=${encodedProduct}`,
-      'Zara': `https://www.zara.com/us/en/search?searchTerm=${encodedProduct}`,
-      // Home & Furniture
-      'Wayfair': `https://www.wayfair.com/keyword.php?keyword=${encodedProduct}`,
-      'IKEA': `https://www.ikea.com/us/en/search/products/?q=${encodedProduct}`,
-      'Home Depot': `https://www.homedepot.com/s/${encodedProduct}`,
-      // Sports & Outdoors
-      'REI': `https://www.rei.com/search?q=${encodedProduct}`,
-      'Dick\'s': `https://www.dickssportinggoods.com/search/SearchDisplay?searchTerm=${encodedProduct}`,
-      // Books & Media
-      'Barnes & Noble': `https://www.barnesandnoble.com/s/${encodedProduct}`,
-      'Books-A-Million': `https://www.booksamillion.com/search?query=${encodedProduct}`,
-      // Beauty & Health
-      'Sephora': `https://www.sephora.com/search?keyword=${encodedProduct}`,
-      'Ulta': `https://www.ulta.com/ulta/a/_/Ntt-${encodedProduct}`,
+    const cleanProductName = productName.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    // If we have a product ID or SKU, try to use it for direct product URLs
+    if (product.productId || product.sku) {
+      const id = product.productId || product.sku;
+      const storeProductUrls: { [key: string]: string } = {
+        'Amazon': `https://www.amazon.com/dp/${id}`,
+        'Walmart': `https://www.walmart.com/ip/${id}`,
+        'Best Buy': `https://www.bestbuy.com/site/searchpage.jsp?st=${id}&_dyncharset=UTF-8`,
+        'Target': `https://www.target.com/p/a/${id}`,
+        'eBay': `https://www.ebay.com/itm/${id}`,
+        'Newegg': `https://www.newegg.com/p/${id}`,
+        'B&H Photo': `https://www.bhphotovideo.com/c/product/${id}`,
+        'Micro Center': `https://www.microcenter.com/product/${id}`,
+        'ASOS': `https://www.asos.com/product/${id}`,
+        'Wayfair': `https://www.wayfair.com/product/id/${id}`,
+        'IKEA': `https://www.ikea.com/us/en/p/${id}`,
+        'Home Depot': `https://www.homedepot.com/p/${id}`,
+        'REI': `https://www.rei.com/product/${id}`,
+        'Dick\'s': `https://www.dickssportinggoods.com/p/${id}`,
+        'Barnes & Noble': `https://www.barnesandnoble.com/w/${id}`,
+        'Sephora': `https://www.sephora.com/product/${id}`,
+        'Ulta': `https://www.ulta.com/p/${id}`,
+      };
+
+      if (storeProductUrls[store]) {
+        return storeProductUrls[store];
+      }
+    }
+
+    // If no product ID, try to create SEO-friendly URLs
+    const seoUrls: { [key: string]: string } = {
+      'Amazon': `https://www.amazon.com/s?k=${encodedProduct}&rh=p_72%3A2661618011`,
+      'Walmart': `https://www.walmart.com/browse/${cleanProductName}/_/N-${encodedProduct}`,
+      'Best Buy': `https://www.bestbuy.com/site/${cleanProductName}/searchpage.jsp`,
+      'Target': `https://www.target.com/s?searchTerm=${encodedProduct}&sortBy=relevance`,
+      'eBay': `https://www.ebay.com/sch/i.html?_nkw=${encodedProduct}&_sop=12`,
+      'Newegg': `https://www.newegg.com/p/pl?d=${encodedProduct}&N=4131`,
+      'B&H Photo': `https://www.bhphotovideo.com/c/product/${cleanProductName}`,
+      'Micro Center': `https://www.microcenter.com/search/${cleanProductName}?sortBy=match`,
+      'ASOS': `https://www.asos.com/${cleanProductName}?q=${encodedProduct}`,
+      'H&M': `https://www2.hm.com/en_us/productpage/${cleanProductName}`,
+      'Zara': `https://www.zara.com/us/en/products/${cleanProductName}`,
+      'Wayfair': `https://www.wayfair.com/keyword.php?keyword=${encodedProduct}&filters=categories:${cleanProductName}`,
+      'IKEA': `https://www.ikea.com/us/en/cat/${cleanProductName}-products/`,
+      'Home Depot': `https://www.homedepot.com/b/${cleanProductName}/_/N-${encodedProduct}`,
+      'REI': `https://www.rei.com/c/${cleanProductName}?q=${encodedProduct}`,
+      'Dick\'s': `https://www.dickssportinggoods.com/f/${cleanProductName}?searchTerm=${encodedProduct}`,
+      'Barnes & Noble': `https://www.barnesandnoble.com/s/${encodedProduct}?&sortBy=bestMatch`,
+      'Books-A-Million': `https://www.booksamillion.com/search?query=${encodedProduct}&filter=product_type:books`,
+      'Sephora': `https://www.sephora.com/shop/${cleanProductName}?keyword=${encodedProduct}`,
+      'Ulta': `https://www.ulta.com/shop/${cleanProductName}?q=${encodedProduct}`,
     };
 
-    // If it's not a known store, try to generate a smart URL
-    if (!storeUrls[store]) {
-      // Clean up store name for URL
+    // If it's not a known store, try to generate a smart product URL
+    if (!seoUrls[store]) {
       const cleanStoreName = store.toLowerCase()
         .replace(/[^a-z0-9]/g, '')
         .replace(/\s+/g, '');
       
-      // Try common URL patterns
+      // Try common product URL patterns
       const possibleUrls = [
-        `https://www.${cleanStoreName}.com/search?q=${encodedProduct}`,
-        `https://www.${cleanStoreName}.com/s?k=${encodedProduct}`,
-        `https://www.${cleanStoreName}.com/products/search?query=${encodedProduct}`,
+        `https://www.${cleanStoreName}.com/p/${cleanProductName}`,
+        `https://www.${cleanStoreName}.com/product/${cleanProductName}`,
+        `https://www.${cleanStoreName}.com/${cleanProductName}`,
+        `https://www.${cleanStoreName}.com/products/${cleanProductName}`,
       ];
 
-      // Return the first pattern as default, and let the browser handle redirects
       return possibleUrls[0];
     }
 
-    return storeUrls[store];
+    return seoUrls[store];
   };
 
   const generateFallbackProducts = async (productName: string): Promise<Product[]> => {
-    // Use a mix of different types of stores based on the product category
     const productLower = productName.toLowerCase();
     let relevantStores: string[] = [];
 
@@ -98,22 +125,27 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
     } else if (productLower.includes('makeup') || productLower.includes('beauty')) {
       relevantStores = ['Sephora', 'Ulta', 'Amazon', 'Target'];
     } else {
-      // Default to major retailers for general products
       relevantStores = ['Amazon', 'Walmart', 'Target', 'eBay'];
     }
 
     const basePrice = Math.random() * 50 + 20;
     
-    return relevantStores.map((store, index) => ({
-      name: `${productName} - ${store} Selection`,
-      description: `High-quality ${productName} available at ${store}. Features vary by model and availability.`,
-      price: `$${(basePrice + (index * 5) + Math.random() * 10).toFixed(2)}`,
-      store: store,
-      url: generateStoreUrl(store, productName),
-      rating: `${(Math.random() * 1.5 + 3.5).toFixed(1)}/5`,
-      availability: Math.random() > 0.2 ? 'In Stock' : 'Limited Stock',
-      shipping: Math.random() > 0.3 ? 'Free Shipping' : `$${(Math.random() * 10 + 5).toFixed(2)} Shipping`
-    }));
+    return relevantStores.map((store, index) => {
+      // Generate a mock product ID based on store and product
+      const mockId = Buffer.from(`${store}-${productName}-${index}`).toString('base64').substring(0, 10);
+      
+      return {
+        name: `${productName} - ${store} Selection`,
+        description: `High-quality ${productName} available at ${store}. Features vary by model and availability.`,
+        price: `$${(basePrice + (index * 5) + Math.random() * 10).toFixed(2)}`,
+        store: store,
+        productId: mockId,
+        url: generateProductUrl(store, productName, { productId: mockId } as Product),
+        rating: `${(Math.random() * 1.5 + 3.5).toFixed(1)}/5`,
+        availability: Math.random() > 0.2 ? 'In Stock' : 'Limited Stock',
+        shipping: Math.random() > 0.3 ? 'Free Shipping' : `$${(Math.random() * 10 + 5).toFixed(2)} Shipping`
+      };
+    });
   };
 
   const generateProductData = async (productName: string): Promise<Product[]> => {
@@ -129,11 +161,11 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
           messages: [
             {
               role: 'system',
-              content: `You are a product research assistant. Generate realistic product listings with names, descriptions, prices, and store information. Consider the type of product when suggesting stores. Return exactly 4 products in JSON format with fields: name, description, price, store, rating, availability, shipping. Make the data realistic and varied across different relevant stores.`
+              content: `You are a product research assistant. Generate realistic product listings with names, descriptions, prices, and store information. Consider the type of product when suggesting stores. Return exactly 4 products in JSON format with fields: name, description, price, store, rating, availability, shipping, productId. Make the data realistic and varied across different relevant stores. The productId should be a realistic product identifier for that store.`
             },
             {
               role: 'user',
-              content: `Generate 4 realistic product listings for: ${productName}. Choose stores that would actually sell this type of product. Make sure each has a unique name, detailed description, realistic price, and proper store information. Include availability and shipping info.`
+              content: `Generate 4 realistic product listings for: ${productName}. Choose stores that would actually sell this type of product. Make sure each has a unique name, detailed description, realistic price, proper store information, and a realistic product ID for that store. Include availability and shipping info.`
             }
           ],
           temperature: 0.7,
@@ -152,16 +184,15 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
         const jsonMatch = content.match(/\[[\s\S]*\]/);
         if (jsonMatch) {
           const products = JSON.parse(jsonMatch[0]);
-          return products.map((product: any) => ({
+          return products.map((product: Product) => ({
             ...product,
-            url: generateStoreUrl(product.store, productName)
+            url: generateProductUrl(product.store, productName, product)
           }));
         }
       } catch (parseError) {
         console.error('JSON parse error:', parseError);
       }
 
-      // Fallback to manual generation if JSON parsing fails
       return generateFallbackProducts(productName);
     } catch (error) {
       console.error('Error generating product data:', error);
