@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Search, ShoppingCart, ExternalLink, Star } from 'lucide-react';
 import { toast } from "sonner";
@@ -15,6 +15,8 @@ interface Product {
   url: string;
   rating?: string;
   image?: string;
+  availability?: string;
+  shipping?: string;
 }
 
 interface EasyShoppingToolProps {
@@ -29,27 +31,88 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
   const generateStoreUrl = (store: string, productName: string): string => {
     const encodedProduct = encodeURIComponent(productName);
     const storeUrls: { [key: string]: string } = {
+      // Major retailers
       'Amazon': `https://www.amazon.com/s?k=${encodedProduct}`,
       'Walmart': `https://www.walmart.com/search?q=${encodedProduct}`,
       'Best Buy': `https://www.bestbuy.com/site/searchpage.jsp?st=${encodedProduct}`,
       'Target': `https://www.target.com/s?searchTerm=${encodedProduct}`,
       'eBay': `https://www.ebay.com/sch/i.html?_nkw=${encodedProduct}`,
-      'Newegg': `https://www.newegg.com/p/pl?d=${encodedProduct}`
+      'Newegg': `https://www.newegg.com/p/pl?d=${encodedProduct}`,
+      // Electronics
+      'B&H Photo': `https://www.bhphotovideo.com/c/search?q=${encodedProduct}`,
+      'Micro Center': `https://www.microcenter.com/search/${encodedProduct}`,
+      // Fashion
+      'ASOS': `https://www.asos.com/search/?q=${encodedProduct}`,
+      'H&M': `https://www2.hm.com/en_us/search-results.html?q=${encodedProduct}`,
+      'Zara': `https://www.zara.com/us/en/search?searchTerm=${encodedProduct}`,
+      // Home & Furniture
+      'Wayfair': `https://www.wayfair.com/keyword.php?keyword=${encodedProduct}`,
+      'IKEA': `https://www.ikea.com/us/en/search/products/?q=${encodedProduct}`,
+      'Home Depot': `https://www.homedepot.com/s/${encodedProduct}`,
+      // Sports & Outdoors
+      'REI': `https://www.rei.com/search?q=${encodedProduct}`,
+      'Dick\'s': `https://www.dickssportinggoods.com/search/SearchDisplay?searchTerm=${encodedProduct}`,
+      // Books & Media
+      'Barnes & Noble': `https://www.barnesandnoble.com/s/${encodedProduct}`,
+      'Books-A-Million': `https://www.booksamillion.com/search?query=${encodedProduct}`,
+      // Beauty & Health
+      'Sephora': `https://www.sephora.com/search?keyword=${encodedProduct}`,
+      'Ulta': `https://www.ulta.com/ulta/a/_/Ntt-${encodedProduct}`,
     };
-    return storeUrls[store] || `https://www.google.com/search?q=${encodedProduct}+${store}`;
+
+    // If it's not a known store, try to generate a smart URL
+    if (!storeUrls[store]) {
+      // Clean up store name for URL
+      const cleanStoreName = store.toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .replace(/\s+/g, '');
+      
+      // Try common URL patterns
+      const possibleUrls = [
+        `https://www.${cleanStoreName}.com/search?q=${encodedProduct}`,
+        `https://www.${cleanStoreName}.com/s?k=${encodedProduct}`,
+        `https://www.${cleanStoreName}.com/products/search?query=${encodedProduct}`,
+      ];
+
+      // Return the first pattern as default, and let the browser handle redirects
+      return possibleUrls[0];
+    }
+
+    return storeUrls[store];
   };
 
-  const generateFallbackProducts = (productName: string): Product[] => {
-    const stores = ['Amazon', 'Walmart', 'Best Buy', 'Target'];
+  const generateFallbackProducts = async (productName: string): Promise<Product[]> => {
+    // Use a mix of different types of stores based on the product category
+    const productLower = productName.toLowerCase();
+    let relevantStores: string[] = [];
+
+    // Determine relevant stores based on product keywords
+    if (productLower.includes('phone') || productLower.includes('laptop') || productLower.includes('camera')) {
+      relevantStores = ['Amazon', 'Best Buy', 'B&H Photo', 'Newegg'];
+    } else if (productLower.includes('clothes') || productLower.includes('shoes') || productLower.includes('dress')) {
+      relevantStores = ['ASOS', 'H&M', 'Zara', 'Nordstrom'];
+    } else if (productLower.includes('furniture') || productLower.includes('home')) {
+      relevantStores = ['IKEA', 'Wayfair', 'Home Depot', 'Target'];
+    } else if (productLower.includes('book') || productLower.includes('novel')) {
+      relevantStores = ['Amazon', 'Barnes & Noble', 'Books-A-Million', 'ThriftBooks'];
+    } else if (productLower.includes('makeup') || productLower.includes('beauty')) {
+      relevantStores = ['Sephora', 'Ulta', 'Amazon', 'Target'];
+    } else {
+      // Default to major retailers for general products
+      relevantStores = ['Amazon', 'Walmart', 'Target', 'eBay'];
+    }
+
     const basePrice = Math.random() * 50 + 20;
     
-    return stores.map((store, index) => ({
-      name: `${productName} - ${store} Choice`,
-      description: `High-quality ${productName} with excellent features and customer satisfaction. Perfect for everyday use with reliable performance.`,
+    return relevantStores.map((store, index) => ({
+      name: `${productName} - ${store} Selection`,
+      description: `High-quality ${productName} available at ${store}. Features vary by model and availability.`,
       price: `$${(basePrice + (index * 5) + Math.random() * 10).toFixed(2)}`,
       store: store,
       url: generateStoreUrl(store, productName),
-      rating: `${(Math.random() * 1.5 + 3.5).toFixed(1)}/5`
+      rating: `${(Math.random() * 1.5 + 3.5).toFixed(1)}/5`,
+      availability: Math.random() > 0.2 ? 'In Stock' : 'Limited Stock',
+      shipping: Math.random() > 0.3 ? 'Free Shipping' : `$${(Math.random() * 10 + 5).toFixed(2)} Shipping`
     }));
   };
 
@@ -66,11 +129,11 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
           messages: [
             {
               role: 'system',
-              content: 'You are a product research assistant. Generate realistic product listings with names, descriptions, prices, and store information. Return exactly 4 products in JSON format with fields: name, description, price, store, url, rating. Make the data realistic and varied across different stores.'
+              content: `You are a product research assistant. Generate realistic product listings with names, descriptions, prices, and store information. Consider the type of product when suggesting stores. Return exactly 4 products in JSON format with fields: name, description, price, store, rating, availability, shipping. Make the data realistic and varied across different relevant stores.`
             },
             {
               role: 'user',
-              content: `Generate 4 realistic product listings for: ${productName}. Include products from Amazon, Walmart, Best Buy, and Target. Make sure each has a unique name, detailed description, realistic price, and proper store URL format.`
+              content: `Generate 4 realistic product listings for: ${productName}. Choose stores that would actually sell this type of product. Make sure each has a unique name, detailed description, realistic price, and proper store information. Include availability and shipping info.`
             }
           ],
           temperature: 0.7,
@@ -86,17 +149,12 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
       const content = data.choices[0]?.message?.content;
       
       try {
-        // Try to parse JSON from the response
         const jsonMatch = content.match(/\[[\s\S]*\]/);
         if (jsonMatch) {
           const products = JSON.parse(jsonMatch[0]);
-          return products.map((product: any, index: number) => ({
-            name: product.name || `${productName} - Option ${index + 1}`,
-            description: product.description || `High-quality ${productName} with excellent features`,
-            price: product.price || `$${(Math.random() * 100 + 10).toFixed(2)}`,
-            store: product.store || ['Amazon', 'Walmart', 'Best Buy', 'Target'][index],
-            url: product.url || generateStoreUrl(product.store || ['Amazon', 'Walmart', 'Best Buy', 'Target'][index], productName),
-            rating: product.rating || `${(Math.random() * 2 + 3).toFixed(1)}/5`
+          return products.map((product: any) => ({
+            ...product,
+            url: generateStoreUrl(product.store, productName)
           }));
         }
       } catch (parseError) {
@@ -150,7 +208,7 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
       <div className="p-4 border-b border-border">
         <div className="flex items-center space-x-2 mb-4">
           <ShoppingCart className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold text-foreground">Easy Shopping</h2>
+          <h2 className="text-lg font-semibold text-foreground">Smart Shopping Assistant</h2>
         </div>
         
         <div className="flex space-x-2">
@@ -188,7 +246,7 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
                         <h3 className="font-semibold text-foreground line-clamp-2 text-sm">
                           {product.name}
                         </h3>
-                        <Badge variant="secondary" className="ml-2 shrink-0 text-xs">
+                        <Badge className="ml-2 shrink-0 text-xs">
                           {product.store}
                         </Badge>
                       </div>
@@ -198,13 +256,25 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
                       </p>
                       
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-lg text-primary">{product.price}</span>
-                        {product.rating && (
-                          <div className="flex items-center space-x-1">
-                            <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                            <span className="text-xs text-muted-foreground">{product.rating}</span>
-                          </div>
-                        )}
+                        <div className="flex flex-col">
+                          <span className="font-bold text-lg text-primary">{product.price}</span>
+                          {product.shipping && (
+                            <span className="text-xs text-muted-foreground">{product.shipping}</span>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end">
+                          {product.rating && (
+                            <div className="flex items-center space-x-1">
+                              <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                              <span className="text-xs text-muted-foreground">{product.rating}</span>
+                            </div>
+                          )}
+                          {product.availability && (
+                            <span className={`text-xs ${product.availability === 'In Stock' ? 'text-green-500' : 'text-orange-500'}`}>
+                              {product.availability}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       
                       <Button
@@ -229,9 +299,9 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
           <div className="flex-1 flex items-center justify-center text-center p-8">
             <div className="space-y-3">
               <ShoppingCart className="h-12 w-12 mx-auto text-muted-foreground/50" />
-              <h3 className="text-lg font-medium text-foreground">Search for Products</h3>
+              <h3 className="text-lg font-medium text-foreground">Smart Product Search</h3>
               <p className="text-muted-foreground max-w-sm text-sm">
-                Enter any product name to find realistic options across multiple stores
+                Enter any product to find the best options across relevant stores
               </p>
             </div>
           </div>
@@ -242,7 +312,7 @@ export const EasyShoppingTool: React.FC<EasyShoppingToolProps> = ({ onSendToChat
         <div className="p-4 border-t border-border">
           <div className="flex items-center justify-center space-x-2">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            <span className="text-sm text-muted-foreground">Searching products...</span>
+            <span className="text-sm text-muted-foreground">Finding the best options...</span>
           </div>
         </div>
       )}
