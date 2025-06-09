@@ -71,40 +71,38 @@ export const DailyPlanner: React.FC<DailyPlannerProps> = ({ onSendToChat }) => {
     }
   };
 
-  const sendDaySummaryToChat = () => {
-    if (!onSendToChat) return;
-    
-    const totalTasks = tasksForSelectedDate.length;
-    const completedTasks = tasksForSelectedDate.filter(t => t.completed).length;
-    const pendingTasks = tasksForSelectedDate.filter(t => !t.completed);
-    
-    let summary = `📅 **Daily Summary for ${format(selectedDate, 'EEEE, MMMM do, yyyy')}**\n\n`;
-    summary += `📊 **Overview:**\n`;
-    summary += `• Total tasks: ${totalTasks}\n`;
-    summary += `• Completed: ${completedTasks}\n`;
-    summary += `• Remaining: ${totalTasks - completedTasks}\n\n`;
-    
-    if (tasksForSelectedDate.length > 0) {
-      summary += `📋 **Task Details:**\n\n`;
-      tasksForSelectedDate.forEach((task, index) => {
-        const status = task.completed ? '✅ Completed' : '⏳ Pending';
-        const dueDate = format(new Date(task.dueDate), 'MMM do, yyyy');
-        
-        summary += `**${index + 1}. ${task.title}**\n`;
-        summary += `   📅 Due: ${dueDate}\n`;
-        summary += `   📊 Status: ${status}\n`;
-        if (task.note) {
-          summary += `   📝 Description: ${task.note}\n`;
-        }
+ const sendAllTasksSummaryToChat = () => {
+  if (!onSendToChat) return;
+
+  const allDates = Object.keys(tasks);
+  let summary = `📋 **Full Task Summary**\n\n`;
+
+  if (allDates.length === 0) {
+    summary += `📝 You have no tasks scheduled.`;
+  } else {
+    allDates.forEach((dateStr) => {
+      const dailyTasks = getTasksForDate(dateStr);
+      if (dailyTasks.length > 0) {
+        const formattedDate = format(new Date(dateStr), 'EEEE, MMMM do, yyyy');
+        summary += `📅 **${formattedDate}**\n`;
+
+        dailyTasks.forEach((task, index) => {
+          const status = task.completed ? '✅ Completed' : '⏳ Pending';
+          summary += `  ${index + 1}. ${task.title}\n`;
+          summary += `     📊 Status: ${status}\n`;
+          if (task.note) {
+            summary += `     📝 ${task.note}\n`;
+          }
+        });
+
         summary += '\n';
-      });
-    } else {
-      summary += `📝 No tasks scheduled for this day.`;
-    }
-    
-    onSendToChat(summary);
-    toast.success('Task summary sent to chat!');
-  };
+      }
+    });
+  }
+
+  onSendToChat(summary);
+  toast.success('Full task summary sent to chat!');
+};
 
   const getWeekDays = () => {
     const start = startOfWeek(selectedDate);
