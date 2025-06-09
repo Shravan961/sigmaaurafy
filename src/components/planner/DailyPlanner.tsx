@@ -6,9 +6,9 @@ import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Calendar as CalendarIcon, Clock, CheckCircle, Trash2, MessageCircle, Send, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Calendar as CalendarIcon, Clock, CheckCircle, Trash2, MessageCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLocalTasks } from '@/hooks/useLocalTasks';
-import { generateId, getTimestamp, formatDate } from '@/utils/helpers';
+import { generateId, getTimestamp } from '@/utils/helpers';
 import { toast } from "sonner";
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 
@@ -54,55 +54,76 @@ export const DailyPlanner: React.FC<DailyPlannerProps> = ({ onSendToChat }) => {
     setNewTaskNote('');
     setShowAddTask(false);
     toast.success('Task added to calendar!');
-    // DO NOT redirect to chat - stay on planner
   };
 
   const handleToggleTask = (taskId: string, completed: boolean, title: string) => {
     updateTask(taskId, { completed });
     toast.success(completed ? 'Task completed!' : 'Task marked as incomplete');
-    // DO NOT redirect to chat - stay on planner
   };
 
   const handleDeleteTask = (taskId: string, title: string) => {
     if (window.confirm(`Delete "${title}"?`)) {
       deleteTask(taskId);
       toast.success('Task deleted');
-      // DO NOT redirect to chat - stay on planner
     }
   };
 
- const sendAllTasksSummaryToChat = () => {
-  if (!onSendToChat) return;
+  const sendDaySummaryToChat = () => {
+    if (!onSendToChat) return;
 
-  const allDates = Object.keys(tasks);
-  let summary = `📋 **Full Task Summary**\n\n`;
+    const formattedDate = format(selectedDate, 'EEEE, MMMM do, yyyy');
+    let summary = `📅 **Tasks for ${formattedDate}**\n\n`;
 
-  if (allDates.length === 0) {
-    summary += `📝 You have no tasks scheduled.`;
-  } else {
-    allDates.forEach((dateStr) => {
-      const dailyTasks = getTasksForDate(dateStr);
-      if (dailyTasks.length > 0) {
-        const formattedDate = format(new Date(dateStr), 'EEEE, MMMM do, yyyy');
-        summary += `📅 **${formattedDate}**\n`;
-
-        dailyTasks.forEach((task, index) => {
-          const status = task.completed ? '✅ Completed' : '⏳ Pending';
-          summary += `  ${index + 1}. ${task.title}\n`;
-          summary += `     📊 Status: ${status}\n`;
-          if (task.note) {
-            summary += `     📝 ${task.note}\n`;
-          }
-        });
-
+    if (tasksForSelectedDate.length === 0) {
+      summary += `📝 No tasks scheduled for today.`;
+    } else {
+      tasksForSelectedDate.forEach((task, index) => {
+        const status = task.completed ? '✅ Completed' : '⏳ Pending';
+        summary += `${index + 1}. ${task.title}\n`;
+        summary += `   📊 Status: ${status}\n`;
+        if (task.note) {
+          summary += `   📝 ${task.note}\n`;
+        }
         summary += '\n';
-      }
-    });
-  }
+      });
+    }
 
-  onSendToChat(summary);
-  toast.success('Full task summary sent to chat!');
-};
+    onSendToChat(summary);
+    toast.success('Day summary sent to chat!');
+  };
+
+  const sendAllTasksSummaryToChat = () => {
+    if (!onSendToChat) return;
+
+    const allDates = Object.keys(tasks);
+    let summary = `📋 **Full Task Summary**\n\n`;
+
+    if (allDates.length === 0) {
+      summary += `📝 You have no tasks scheduled.`;
+    } else {
+      allDates.forEach((dateStr) => {
+        const dailyTasks = getTasksForDate(dateStr);
+        if (dailyTasks.length > 0) {
+          const formattedDate = format(new Date(dateStr), 'EEEE, MMMM do, yyyy');
+          summary += `📅 **${formattedDate}**\n`;
+
+          dailyTasks.forEach((task, index) => {
+            const status = task.completed ? '✅ Completed' : '⏳ Pending';
+            summary += `  ${index + 1}. ${task.title}\n`;
+            summary += `     📊 Status: ${status}\n`;
+            if (task.note) {
+              summary += `     📝 ${task.note}\n`;
+            }
+          });
+
+          summary += '\n';
+        }
+      });
+    }
+
+    onSendToChat(summary);
+    toast.success('Full task summary sent to chat!');
+  };
 
   const getWeekDays = () => {
     const start = startOfWeek(selectedDate);
