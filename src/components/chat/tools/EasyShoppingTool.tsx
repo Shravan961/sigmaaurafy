@@ -96,9 +96,9 @@ ${product.model ? `Model: ${product.model}` : ''}`
       }
 
       // Enhanced fallback URL generation
-      const encodedProduct = encodeURIComponent(productName.toLowerCase());
-      const storeUrlMap: { [key: string]: string } = {
-  amazon: `https://www.amazon.com/s?k=${encodedProduct}`,
+const encodedProduct = encodeURIComponent(productName.toLowerCase());
+const storeUrlMap: { [key: string]: string } = {
+          amazon: `https://www.amazon.com/s?k=${encodedProduct}`,
   ebay: `https://www.ebay.com/sch/i.html?_nkw=${encodedProduct}`,
   walmart: `https://www.walmart.com/search?q=${encodedProduct}`,
   target: `https://www.target.com/s?searchTerm=${encodedProduct}`,
