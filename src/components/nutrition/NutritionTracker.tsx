@@ -12,7 +12,6 @@ import { toast } from "sonner";
 import { NutritionCard } from '@/components/nutrition/NutritionCard';
 import { SymptomCard } from '@/components/nutrition/SymptomCard';
 
-// Gemini API configuration
 const GEMINI_API_KEY = 'AIzaSyB1ZBFMSVc9G5kypdkw91im9o4Rd3dBARw';
 
 export const NutritionTracker: React.FC = () => {
@@ -66,24 +65,34 @@ export const NutritionTracker: React.FC = () => {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      toast.error('Please select a valid image file');
+      toast.error('Please select a valid image file (JPEG, PNG)');
+      return;
+    }
+
+    // Check file size (max 4MB)
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error('Image size too large. Please select an image smaller than 4MB.');
       return;
     }
 
     setIsLoading(true);
     try {
-      toast.info('Analyzing image...', { duration: 2000 });
+      toast.info('Analyzing image...');
       
-      // Use the Gemini API key when calling analyzeFoodImage
       const detectedFood = await analyzeFoodImage(file, GEMINI_API_KEY);
       
       if (!detectedFood) {
         throw new Error('Could not identify food in the image');
       }
       
-      toast.info(`Detected: ${detectedFood}. Getting nutrition data...`, { duration: 2000 });
+      toast.info(`Detected: ${detectedFood}`, { duration: 3000 });
       
       const result = await nutritionService.searchNutrition(detectedFood);
+      
+      if (!result || result.length === 0) {
+        throw new Error('No nutrition data found for the detected food');
+      }
+
       const imageUrl = URL.createObjectURL(file);
 
       const newEntry = {
@@ -99,16 +108,21 @@ export const NutritionTracker: React.FC = () => {
       toast.success('Food image analyzed successfully!');
     } catch (error) {
       console.error('Image analysis error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unable to analyze image';
+      
+      let errorMessage = 'Unable to analyze image. Please try again or enter manually.';
+      if (error instanceof Error) {
+        if (error.message.includes('400')) {
+          errorMessage = 'Invalid image format. Please try with a different image.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      if (cameraInputRef.current) {
-        cameraInputRef.current.value = '';
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
     }
   };
 
