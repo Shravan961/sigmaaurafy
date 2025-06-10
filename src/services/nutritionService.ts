@@ -1,236 +1,207 @@
-import { CALORIE_NINJAS_KEY, GEMINI_API_KEY, GROQ_API_KEY, GROQ_MODEL } from '@/utils/constants';
-import { memoryService } from './memoryService';
+import React, { useState, useRef } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Search, Plus, TrendingUp, Upload, Camera } from 'lucide-react';
+import { useLocalNutrition } from '@/hooks/useLocalNutrition';
+import { useLocalSymptoms } from '@/hooks/useLocalSymptoms';
+import { nutritionService, analyzeFoodImage } from '@/services/nutritionService';
+import { lookupSymptom } from '@/api/symptomsClient';
+import { generateId, getTimestamp, formatDateTime } from '@/utils/helpers';
+import { toast } from "sonner";
+import { NutritionCard } from '@/components/nutrition/NutritionCard';
+import { SymptomCard } from '@/components/nutrition/SymptomCard';
 
-export interface NutritionItem {
-  name: string;
-  calories: number;
-  protein_g: number;
-  fat_total_g: number;
-  carbohydrates_total_g: number;
-  fiber_g?: number;
-  sugar_g?: number;
-  sodium_mg?: number;
-  serving_size?: string;
-  confidence?: number;
-}
+export const NutritionTracker: React.FC = () => {
+  const [query, setQuery] = useState('');
+  const [symptomQuery, setSymptomQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSymptomLoading, setIsSymptomLoading] = useState(false);
+  const [currentSymptomResult, setCurrentSymptomResult] = useState<any>(null);
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-export const analyzeFoodImage = async (imageFile: File): Promise<string> => {
-  try {
-    // Convert image to base64
-    const base64Image = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        // Remove data:image/jpeg;base64, prefix
-        const base64 = result.split(',')[1];
-        resolve(base64);
+  const { entries, addEntry, deleteEntry } = useLocalNutrition();
+  const { symptoms, addSymptom } = useLocalSymptoms();
+
+  const handleSearch = async () => {
+    if (!query.trim()) return;
+
+    setIsLoading(true);
+    try {
+      const result = await nutritionService.searchNutrition(query);
+
+      const newEntry = {
+        id: generateId(),
+        query: query.trim(),
+        result: { items: result },
+        timestamp: getTimestamp(),
       };
-      reader.onerror = reject;
-      reader.readAsDataURL(imageFile);
-    });
 
-    // Use Gemini API for food identification
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            {
-              text: "Identify the food items in this image. Provide the name of each food item, estimated portion size, and any visible details that would help determine nutritional content. Be specific about quantities (e.g., '1 medium apple', '2 slices of bread', '1 cup of rice'). If multiple items are visible, list them all separately."
-            },
-            {
-              inline_data: {
-                mime_type: imageFile.type,
-                data: base64Image
-              }
-            }
-          ]
-        }],
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 500
-        }
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.status}`);
+      addEntry(newEntry);
+      setQuery('');
+      toast.success('Nutrition information found!');
+    } catch (error) {
+      console.error('Nutrition search error:', error);
+      toast.error('Failed to fetch nutrition data. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    const data = await response.json();
-    
-    // Add proper null checks for the response structure
-    let identifiedFood: string | null = null;
-    
-    if (data && 
-        Array.isArray(data.candidates) && 
-        data.candidates.length > 0 && 
-        data.candidates[0] && 
-        data.candidates[0].content && 
-        Array.isArray(data.candidates[0].content.parts) && 
-        data.candidates[0].content.parts.length > 0 && 
-        data.candidates[0].content.parts[0] && 
-        data.candidates[0].content.parts[0].text) {
-      identifiedFood = data.candidates[0].content.parts[0].text;
-    }
-    
-    if (!identifiedFood) {
-      console.error('Gemini API response structure:', JSON.stringify(data, null, 2));
-      throw new Error('Could not identify food in image - invalid response structure');
-    }
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-    // Use Groq to refine the food identification for nutrition lookup
-    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GROQ_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a nutrition expert. Convert food descriptions into simple, nutrition-database-friendly queries. Return only the food name and quantity in a format suitable for CalorieNinja API.'
-          },
-          {
-            role: 'user',
-            content: `Convert this food identification into a simple query: ${identifiedFood}`
-          }
-        ],
-        temperature: 0.2,
-        max_tokens: 100
-      })
-    });
+    setIsLoading(true);
+    try {
+      const detectedFood = await analyzeFoodImage(file);
+      const result = await nutritionService.searchNutrition(detectedFood);
+      const imageUrl = URL.createObjectURL(file);
 
-    if (!groqResponse.ok) {
-      console.error('Groq API error:', groqResponse.status);
-      // Fall back to using the original identified food if Groq fails
-      const refinedQuery = identifiedFood;
-      
-      // Save the food identification to memory
-      memoryService.addMemory({
-        type: 'chat',
-        title: `Food Identified: ${refinedQuery}`,
-        content: `Original Gemini identification: ${identifiedFood}\nRefined query: ${refinedQuery} (Groq refinement failed)`,
-        metadata: { 
-          foodIdentification: true,
-          originalGeminiResult: identifiedFood,
-          refinedQuery: refinedQuery
-        }
-      });
+      const newEntry = {
+        id: generateId(),
+        query: `Photo: ${detectedFood}`,
+        result: { items: result },
+        timestamp: getTimestamp(),
+        isImageBased: true,
+        imageUrl: imageUrl,
+      };
 
-      return refinedQuery;
-    }
-
-    const groqData = await groqResponse.json();
-    const refinedQuery = (groqData.choices && 
-                         Array.isArray(groqData.choices) && 
-                         groqData.choices.length > 0 && 
-                         groqData.choices[0] && 
-                         groqData.choices[0].message && 
-                         groqData.choices[0].message.content) 
-                         ? groqData.choices[0].message.content 
-                         : identifiedFood;
-
-    // Save the food identification to memory
-    memoryService.addMemory({
-      type: 'chat',
-      title: `Food Identified: ${refinedQuery}`,
-      content: `Original Gemini identification: ${identifiedFood}\nRefined query: ${refinedQuery}`,
-      metadata: { 
-        foodIdentification: true,
-        originalGeminiResult: identifiedFood,
-        refinedQuery: refinedQuery
+      addEntry(newEntry);
+      toast.success('Food image analyzed successfully!');
+    } catch (error) {
+      console.error('Image analysis error:', error);
+      toast.error('Unable to analyze image. Please try again or log manually.');
+    } finally {
+      setIsLoading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
       }
-    });
+    }
+  };
 
-    return refinedQuery;
-  } catch (error) {
-    console.error('Food image analysis error:', error);
-    throw new Error('Unable to identify food in image. Please try again or enter manually.');
-  }
+  const handleDeleteEntry = (entryId: string) => {
+    deleteEntry(entryId);
+    toast.success('Nutrition entry deleted');
+  };
+
+  const handleSymptomSearch = async () => {
+    if (!symptomQuery.trim()) return;
+
+    setIsSymptomLoading(true);
+    try {
+      const result = await lookupSymptom(symptomQuery);
+
+      if (result) {
+        setCurrentSymptomResult(result);
+
+        const newSymptom = {
+          id: generateId(),
+          symptom: symptomQuery.trim(),
+          timestamp: getTimestamp(),
+          result: {
+            description: result.description,
+            commonCauses: result.commonCauses,
+            warningSigns: result.warningSigns,
+            careTips: result.careTips,
+          }
+        };
+
+        addSymptom(newSymptom);
+        setSymptomQuery('');
+        toast.success('Symptom information found!');
+      } else {
+        setCurrentSymptomResult(null);
+        toast.error('No information found. Please try a different symptom.');
+      }
+    } catch (error) {
+      console.error('Symptom search error:', error);
+      toast.error('Failed to fetch symptom data. Please try again.');
+    } finally {
+      setIsSymptomLoading(false);
+    }
+  };
+
+  const getTotalCalories = () => {
+    return entries.reduce((total, entry) => 
+      total + entry.result.items.reduce((sum, item) => sum + item.calories, 0), 0
+    );
+  };
+
+  const getTotalMacros = () => {
+    return entries.reduce(
+      (totals, entry) => {
+        const entryTotals = entry.result.items.reduce(
+          (sum, item) => ({
+            protein: sum.protein + item.protein_g,
+            fat: sum.fat + item.fat_total_g,
+            carbs: sum.carbs + item.carbohydrates_total_g,
+          }),
+          { protein: 0, fat: 0, carbs: 0 }
+        );
+        return {
+          protein: totals.protein + entryTotals.protein,
+          fat: totals.fat + entryTotals.fat,
+          carbs: totals.carbs + entryTotals.carbs,
+        };
+      },
+      { protein: 0, fat: 0, carbs: 0 }
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-gray-..."
+      </div>
+    </div>
+  );
 };
 
-export const nutritionService = {
-  async searchNutrition(query: string): Promise<NutritionItem[]> {
-    try {
-      const response = await fetch(`https://api.calorieninjas.com/v1/nutrition?query=${encodeURIComponent(query)}`, {
-        headers: {
-          'X-Api-Key': CALORIE_NINJAS_KEY,
-        },
-      });
+export const analyzeFoodImage = async (file: File): Promise<string> => {
+  try {
+    const reader = new FileReader();
 
-      if (!response.ok) {
-        throw new Error(`CalorieNinjas API error: ${response.status}`);
-      }
+    const base64: string = await new Promise((resolve, reject) => {
+      reader.onload = () => resolve((reader.result as string).split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
 
-      const data = await response.json();
-      const items = data.items || [];
-      
-      // Enhance nutrition data with Groq analysis
-      if (items.length > 0) {
-        try {
-          const enhancedResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${GROQ_API_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: GROQ_MODEL,
-              messages: [
-                {
-                  role: 'system',
-                  content: 'You are a nutrition expert. Provide additional health insights, serving recommendations, and nutritional context for food items.'
-                },
-                {
-                  role: 'user',
-                  content: `Provide brief health insights for: ${query}. Include serving recommendations and any notable nutritional benefits or concerns.`
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=AIzaSyB1ZBFMSVc9G5kypdkw91im9o4Rd3dBARw", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                inlineData: {
+                  mimeType: file.type,
+                  data: base64
                 }
-              ],
-              temperature: 0.3,
-              max_tokens: 200
-            })
-          });
-
-          if (enhancedResponse.ok) {
-            const enhancedData = await enhancedResponse.json();
-            const insights = (enhancedData.choices && 
-                             Array.isArray(enhancedData.choices) && 
-                             enhancedData.choices.length > 0 && 
-                             enhancedData.choices[0] && 
-                             enhancedData.choices[0].message && 
-                             enhancedData.choices[0].message.content) 
-                             ? enhancedData.choices[0].message.content 
-                             : null;
-
-            if (insights) {
-              // Add insights to memory
-              memoryService.addMemory({
-                type: 'chat',
-                title: `Nutrition Analysis: ${query}`,
-                content: `Food items: ${items.map(item => `${item.name} (${item.calories} cal)`).join(', ')}\n\nHealth insights: ${insights}`,
-                metadata: { 
-                  nutritionQuery: query,
-                  totalCalories: items.reduce((sum, item) => sum + item.calories, 0),
-                  insights: insights
-                }
-              });
-            }
+              },
+              {
+                text: "What type of food is this? Give a short, simple name suitable for nutrition lookup."
+              }
+            ]
           }
-        } catch (error) {
-          console.error('Error getting nutrition insights:', error);
-        }
-      }
+        ]
+      })
+    });
 
-      return items;
-    } catch (error) {
-      console.error('Nutrition API error:', error);
-      throw error;
-    }
+    const data = await response.json();
+
+    const guess = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+    if (!guess) throw new Error("No food detected");
+
+    return guess;
+  } catch (error) {
+    console.error("Gemini image analysis failed:", error);
+    throw new Error("Image analysis failed");
   }
 };
