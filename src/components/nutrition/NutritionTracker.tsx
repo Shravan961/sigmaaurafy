@@ -69,7 +69,6 @@ export const NutritionTracker: React.FC = () => {
       return;
     }
 
-    // Check file size (max 4MB)
     if (file.size > 4 * 1024 * 1024) {
       toast.error('Image size too large. Please select an image smaller than 4MB.');
       return;
@@ -81,8 +80,9 @@ export const NutritionTracker: React.FC = () => {
       
       const detectedFood = await analyzeFoodImage(file, GEMINI_API_KEY);
       
-      if (!detectedFood) {
-        throw new Error('Could not identify food in the image');
+      if (!detectedFood || detectedFood.toLowerCase().includes('no food') || detectedFood.toLowerCase().includes('unable to identify')) {
+        toast.error('Could not identify any food items in the image. Please try again or enter manually.');
+        return;
       }
       
       toast.info(`Detected: ${detectedFood}`, { duration: 3000 });
@@ -90,7 +90,8 @@ export const NutritionTracker: React.FC = () => {
       const result = await nutritionService.searchNutrition(detectedFood);
       
       if (!result || result.length === 0) {
-        throw new Error('No nutrition data found for the detected food');
+        toast.error('No nutrition data found for the detected food item');
+        return;
       }
 
       const imageUrl = URL.createObjectURL(file);
@@ -113,8 +114,8 @@ export const NutritionTracker: React.FC = () => {
       if (error instanceof Error) {
         if (error.message.includes('400')) {
           errorMessage = 'Invalid image format. Please try with a different image.';
-        } else {
-          errorMessage = error.message;
+        } else if (error.message.includes('no food') || error.message.includes('not a food item')) {
+          errorMessage = 'No recognizable food items detected. Please try with a clearer image.';
         }
       }
       
@@ -126,6 +127,7 @@ export const NutritionTracker: React.FC = () => {
     }
   };
 
+  // ... rest of the component remains the same ...
   const handleDeleteEntry = (entryId: string) => {
     deleteEntry(entryId);
     toast.success('Nutrition entry deleted');
