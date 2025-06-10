@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -127,7 +128,6 @@ export const NutritionTracker: React.FC = () => {
     }
   };
 
-  // ... rest of the component remains the same ...
   const handleDeleteEntry = (entryId: string) => {
     deleteEntry(entryId);
     toast.success('Nutrition entry deleted');
@@ -205,10 +205,10 @@ export const NutritionTracker: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+        <h2 className="text-2xl font-bold text-foreground mb-2">
           Nutrition Tracker
         </h2>
-        <p className="text-gray-600 dark:text-gray-300">
+        <p className="text-muted-foreground">
           Track your daily nutrition with AI-powered food recognition
         </p>
       </div>
@@ -311,7 +311,7 @@ export const NutritionTracker: React.FC = () => {
             </Button>
           </div>
 
-          <div className="text-sm text-gray-600 dark:text-gray-400">
+          <div className="text-sm text-muted-foreground">
             📸 Use AI-powered image recognition to automatically identify and log your food
           </div>
         </CardContent>
@@ -320,7 +320,7 @@ export const NutritionTracker: React.FC = () => {
       {/* Nutrition Entries */}
       {entries.length > 0 && (
         <div className="space-y-4">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+          <h3 className="text-xl font-semibold text-foreground">
             Today's Food Log ({entries.length} items)
           </h3>
           {entries.map((entry) => (
@@ -369,17 +369,17 @@ export const NutritionTracker: React.FC = () => {
       {/* Recent Symptoms */}
       {symptoms.length > 0 && (
         <div className="space-y-4">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+          <h3 className="text-xl font-semibold text-foreground">
             Recent Symptoms
           </h3>
           {symptoms.slice(0, 3).map((symptom) => (
             <Card key={symptom.id} className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-medium text-gray-900 dark:text-white capitalize">
+                  <h4 className="font-medium text-foreground capitalize">
                     {symptom.symptom}
                   </h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <p className="text-sm text-muted-foreground">
                     {formatDateTime(symptom.timestamp)}
                   </p>
                 </div>
@@ -392,7 +392,7 @@ export const NutritionTracker: React.FC = () => {
       {entries.length === 0 && (
         <Card className="text-center py-8">
           <CardContent>
-            <div className="text-gray-500 dark:text-gray-400">
+            <div className="text-muted-foreground">
               <Camera className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <h3 className="text-lg font-medium mb-2">No food logged today</h3>
               <p className="text-sm">
