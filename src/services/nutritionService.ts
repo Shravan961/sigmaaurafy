@@ -1,4 +1,3 @@
-
 import { CALORIE_NINJAS_KEY, GEMINI_API_KEY, GROQ_API_KEY, GROQ_MODEL } from '@/utils/constants';
 import { memoryService } from './memoryService';
 
@@ -62,10 +61,25 @@ export const analyzeFoodImage = async (imageFile: File): Promise<string> => {
     }
 
     const data = await response.json();
-    const identifiedFood = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    // Add proper null checks for the response structure
+    let identifiedFood: string | null = null;
+    
+    if (data && 
+        Array.isArray(data.candidates) && 
+        data.candidates.length > 0 && 
+        data.candidates[0] && 
+        data.candidates[0].content && 
+        Array.isArray(data.candidates[0].content.parts) && 
+        data.candidates[0].content.parts.length > 0 && 
+        data.candidates[0].content.parts[0] && 
+        data.candidates[0].content.parts[0].text) {
+      identifiedFood = data.candidates[0].content.parts[0].text;
+    }
     
     if (!identifiedFood) {
-      throw new Error('Could not identify food in image');
+      console.error('Gemini API response structure:', JSON.stringify(data, null, 2));
+      throw new Error('Could not identify food in image - invalid response structure');
     }
 
     // Use Groq to refine the food identification for nutrition lookup
@@ -92,8 +106,35 @@ export const analyzeFoodImage = async (imageFile: File): Promise<string> => {
       })
     });
 
+    if (!groqResponse.ok) {
+      console.error('Groq API error:', groqResponse.status);
+      // Fall back to using the original identified food if Groq fails
+      const refinedQuery = identifiedFood;
+      
+      // Save the food identification to memory
+      memoryService.addMemory({
+        type: 'chat',
+        title: `Food Identified: ${refinedQuery}`,
+        content: `Original Gemini identification: ${identifiedFood}\nRefined query: ${refinedQuery} (Groq refinement failed)`,
+        metadata: { 
+          foodIdentification: true,
+          originalGeminiResult: identifiedFood,
+          refinedQuery: refinedQuery
+        }
+      });
+
+      return refinedQuery;
+    }
+
     const groqData = await groqResponse.json();
-    const refinedQuery = groqData.choices[0]?.message?.content || identifiedFood;
+    const refinedQuery = (groqData.choices && 
+                         Array.isArray(groqData.choices) && 
+                         groqData.choices.length > 0 && 
+                         groqData.choices[0] && 
+                         groqData.choices[0].message && 
+                         groqData.choices[0].message.content) 
+                         ? groqData.choices[0].message.content 
+                         : identifiedFood;
 
     // Save the food identification to memory
     memoryService.addMemory({
@@ -156,20 +197,31 @@ export const nutritionService = {
             })
           });
 
-          const enhancedData = await enhancedResponse.json();
-          const insights = enhancedData.choices[0]?.message?.content;
+          if (enhancedResponse.ok) {
+            const enhancedData = await enhancedResponse.json();
+            const insights = (enhancedData.choices && 
+                             Array.isArray(enhancedData.choices) && 
+                             enhancedData.choices.length > 0 && 
+                             enhancedData.choices[0] && 
+                             enhancedData.choices[0].message && 
+                             enhancedData.choices[0].message.content) 
+                             ? enhancedData.choices[0].message.content 
+                             : null;
 
-          // Add insights to memory
-          memoryService.addMemory({
-            type: 'chat',
-            title: `Nutrition Analysis: ${query}`,
-            content: `Food items: ${items.map(item => `${item.name} (${item.calories} cal)`).join(', ')}\n\nHealth insights: ${insights}`,
-            metadata: { 
-              nutritionQuery: query,
-              totalCalories: items.reduce((sum, item) => sum + item.calories, 0),
-              insights: insights
+            if (insights) {
+              // Add insights to memory
+              memoryService.addMemory({
+                type: 'chat',
+                title: `Nutrition Analysis: ${query}`,
+                content: `Food items: ${items.map(item => `${item.name} (${item.calories} cal)`).join(', ')}\n\nHealth insights: ${insights}`,
+                metadata: { 
+                  nutritionQuery: query,
+                  totalCalories: items.reduce((sum, item) => sum + item.calories, 0),
+                  insights: insights
+                }
+              });
             }
-          });
+          }
         } catch (error) {
           console.error('Error getting nutrition insights:', error);
         }
