@@ -12,6 +12,4 @@ const NutritionCard: React.FC<NutritionCardProps> = () => {
   );
 };
 
-export default NutritionCard;
-
-export { NutritionCard }
+export { NutritionCard };
