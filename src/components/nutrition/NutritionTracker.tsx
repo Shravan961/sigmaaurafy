@@ -12,6 +12,9 @@ import { toast } from "sonner";
 import { NutritionCard } from '@/components/nutrition/NutritionCard';
 import { SymptomCard } from '@/components/nutrition/SymptomCard';
 
+// Gemini API configuration
+const GEMINI_API_KEY = 'AIzaSyB1ZBFMSVc9G5kypdkw91im9o4Rd3dBARw';
+
 export const NutritionTracker: React.FC = () => {
   const [query, setQuery] = useState('');
   const [symptomQuery, setSymptomQuery] = useState('');
@@ -71,7 +74,12 @@ export const NutritionTracker: React.FC = () => {
     try {
       toast.info('Analyzing image...', { duration: 2000 });
       
-      const detectedFood = await analyzeFoodImage(file);
+      // Use the Gemini API key when calling analyzeFoodImage
+      const detectedFood = await analyzeFoodImage(file, GEMINI_API_KEY);
+      
+      if (!detectedFood) {
+        throw new Error('Could not identify food in the image');
+      }
       
       toast.info(`Detected: ${detectedFood}. Getting nutrition data...`, { duration: 2000 });
       
