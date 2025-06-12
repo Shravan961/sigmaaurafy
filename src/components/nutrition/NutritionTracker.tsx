@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Search, Plus, TrendingUp, Upload, Camera, Loader2 } from 'lucide-react';
 import { useLocalNutrition } from '@/hooks/useLocalNutrition';
 import { useLocalSymptoms } from '@/hooks/useLocalSymptoms';
-import { nutritionService, analyzeFoodImage } from '@/services/nutritionService';
+import { nutritionService } from '@/services/nutritionService';
 import { lookupSymptom } from '@/api/symptomsClient';
 import { generateId, getTimestamp, formatDateTime } from '@/utils/helpers';
 import { GEMINI_API_KEY } from '@/utils/constants';
@@ -108,7 +108,7 @@ export const NutritionTracker: React.FC = () => {
   const analyzeImageWithGemini = async (file: File): Promise<string> => {
     try {
       if (!GEMINI_API_KEY) {
-        throw new Error('Gemini API key not configured');
+        throw new Error('Gemini API key not configured. Please add your API key to constants.ts');
       }
 
       const base64Data = await convertImageToBase64(file);
@@ -216,6 +216,38 @@ export const NutritionTracker: React.FC = () => {
     setIsImageAnalyzing(true);
     
     try {
+      if (!GEMINI_API_KEY) {
+        toast.error('⚠️ Gemini API key not configured. Please add your API key to use image analysis.');
+        
+        // Fallback: still create entry but without AI analysis
+        const imageUrl = URL.createObjectURL(file);
+        const fallbackEntry = {
+          id: generateId(),
+          query: `📷 Image upload - ${file.name}`,
+          result: { items: [{
+            name: 'Manual identification needed',
+            calories: 0,
+            serving_size_g: 0,
+            fat_total_g: 0,
+            fat_saturated_g: 0,
+            protein_g: 0,
+            sodium_mg: 0,
+            potassium_mg: 0,
+            cholesterol_mg: 0,
+            carbohydrates_total_g: 0,
+            fiber_g: 0,
+            sugar_g: 0,
+          }] },
+          timestamp: getTimestamp(),
+          isImageBased: true,
+          imageUrl: imageUrl,
+        };
+        
+        addEntry(fallbackEntry);
+        toast.info('Image uploaded. Please manually identify the food items.');
+        return;
+      }
+      
       // Show initial processing message
       toast.info('📸 Analyzing image...', { duration: 2000 });
       
@@ -255,7 +287,7 @@ export const NutritionTracker: React.FC = () => {
       let errorMessage = 'Unable to analyze image. Please try again or enter manually.';
       if (error instanceof Error) {
         if (error.message.includes('API key')) {
-          errorMessage = 'API configuration error. Please contact support.';
+          errorMessage = 'API configuration error. Please add your Gemini API key to constants.ts';
         } else if (error.message.includes('Invalid image format')) {
           errorMessage = 'Invalid image format. Please try with a JPEG or PNG image.';
         } else if (error.message.includes('No recognizable food')) {
@@ -359,6 +391,13 @@ export const NutritionTracker: React.FC = () => {
         <p className="text-muted-foreground">
           Track your daily nutrition with AI-powered food recognition
         </p>
+        {!GEMINI_API_KEY && (
+          <div className="mt-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              <strong>Note:</strong> To use AI image analysis, please add your Gemini API key to <code>src/utils/constants.ts</code>
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Daily Summary */}
