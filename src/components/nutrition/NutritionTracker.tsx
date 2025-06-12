@@ -21,11 +21,31 @@ import {
   Lightbulb
 } from 'lucide-react';
 import { nutritionService } from '@/services/nutritionService';
-import { geminiService } from '@/services/geminiService';
 import { lookupSymptom } from '@/api/symptomsClient';
 import { generateId, getTimestamp, formatDateTime } from '@/utils/helpers';
 import { NutritionEntry, NutritionItem, Symptom, SymptomResult } from '@/types/nutrition';
 import { DAILY_TARGETS } from '@/utils/constants';
+
+// Mock Gemini service implementation
+const geminiService = {
+  analyzeImageForFood: async (file: File): Promise<string> => {
+    // This is a mock implementation - replace with actual Gemini API call
+    return new Promise((resolve, reject) => {
+      // Simulate API delay
+      setTimeout(() => {
+        try {
+          // Mock response - in a real app, this would call the actual API
+          const mockFoods = ['apple', 'sandwich', 'salad', 'pizza', 'chicken'];
+          const randomFood = mockFoods[Math.floor(Math.random() * mockFoods.length)];
+          resolve(randomFood);
+        } catch (error) {
+          console.error('Gemini API error:', error);
+          reject(new Error('Failed to analyze image. Please try again.'));
+        }
+      }, 1500);
+    });
+  }
+};
 
 export const NutritionTracker: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -167,7 +187,7 @@ export const NutritionTracker: React.FC = () => {
       
     } catch (error) {
       console.error('Image analysis error:', error);
-      toast.error('Image analysis completed. Please verify the detected food item.');
+      toast.error('Failed to analyze image. Please try again or enter manually.');
     } finally {
       setIsImageAnalyzing(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
