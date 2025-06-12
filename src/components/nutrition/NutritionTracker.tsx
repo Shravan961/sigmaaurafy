@@ -24,7 +24,7 @@ import { nutritionService } from '@/services/nutritionService';
 import { lookupSymptom } from '@/api/symptomsClient';
 import { generateId, getTimestamp, formatDateTime } from '@/utils/helpers';
 import { NutritionEntry, NutritionItem, Symptom, SymptomResult } from '@/types/nutrition';
-import { GEMINI_API_KEY } from '@/utils/constants'; // Import the API key
+import { GEMINI_API_KEY } from '@/utils/constants.ts'; // Import the API key
 
 // Define daily targets locally
 const DAILY_TARGETS = {
