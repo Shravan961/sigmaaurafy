@@ -34,7 +34,7 @@ const DAILY_TARGETS = {
   fat: 70         // in grams
 };
 
-// Gemini service implementation
+// Gemini service implementation - FIXED ERROR HANDLING
 const geminiService = {
   analyzeImageForFood: async (file: File): Promise<string> => {
     return new Promise(async (resolve, reject) => {
@@ -71,12 +71,24 @@ const geminiService = {
 
           if (!response.ok) {
             const errorData = await response.json();
-            console.error('Gemini API error:', errorData);
-            throw new Error(`API error: ${errorData.error?.message || 'Unknown error'}`);
+            const errorMessage = errorData.error?.message || 'Unknown error';
+            
+            // Handle specific visibility check error
+            if (errorMessage.includes('Visibility check was unavailable')) {
+              throw new Error('Content safety check failed. Please try a different image.');
+            }
+            
+            throw new Error(`API error: ${errorMessage}`);
           }
 
           const data = await response.json();
-          const foodName = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          
+          // Add safety check for empty response
+          if (!data.candidates || data.candidates.length === 0) {
+            throw new Error('No valid response from Gemini API');
+          }
+          
+          const foodName = data.candidates[0].content?.parts?.[0]?.text?.trim();
           
           if (!foodName) {
             throw new Error('Could not identify food from image');
@@ -90,8 +102,11 @@ const geminiService = {
         };
         
       } catch (error) {
-        console.error('Gemini API error:', error);
-        reject(new Error('Failed to analyze image. Please try again.'));
+        if (error instanceof Error) {
+          reject(error);
+        } else {
+          reject(new Error('Failed to analyze image. Please try again.'));
+        }
       }
     });
   }
@@ -237,7 +252,12 @@ export const NutritionTracker: React.FC = () => {
       
     } catch (error) {
       console.error('Image analysis error:', error);
-      toast.error('Failed to analyze image. Please try again or enter manually.');
+      
+      // Handle specific Gemini API errors with custom messages
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(errorMessage.includes('Content safety check failed') 
+        ? '⚠️ Content safety check failed. Please try a different image.' 
+        : 'Failed to analyze image. Please try again or enter manually.');
     } finally {
       setIsImageAnalyzing(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
