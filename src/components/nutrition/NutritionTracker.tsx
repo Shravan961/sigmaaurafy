@@ -24,7 +24,6 @@ import { nutritionService } from '@/services/nutritionService';
 import { lookupSymptom } from '@/api/symptomsClient';
 import { generateId, getTimestamp, formatDateTime } from '@/utils/helpers';
 import { NutritionEntry, NutritionItem, Symptom, SymptomResult } from '@/types/nutrition';
-import { GEMINI_API_KEY } from '@/utils/constants.ts'; // Import the API key
 
 // Define daily targets locally
 const DAILY_TARGETS = {
@@ -60,6 +59,9 @@ const geminiService = {
             }]
           };
 
+          // Hardcoded Gemini API key
+          const GEMINI_API_KEY = "AIzaSyD-AQ42z440hcdVuUs5xI6Vn2YswKCszx0";
+          
           // Call Gemini API
           const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${GEMINI_API_KEY}`, {
             method: 'POST',
