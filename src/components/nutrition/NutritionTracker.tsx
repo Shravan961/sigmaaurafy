@@ -24,7 +24,6 @@ import { nutritionService } from '@/services/nutritionService';
 import { lookupSymptom } from '@/api/symptomsClient';
 import { generateId, getTimestamp, formatDateTime } from '@/utils/helpers';
 import { NutritionEntry, NutritionItem, Symptom, SymptomResult } from '@/types/nutrition';
-import { DAILY_TARGETS } from '@/utils/constants';
 
 // Mock Gemini service implementation
 const geminiService = {
@@ -45,6 +44,14 @@ const geminiService = {
       }, 1500);
     });
   }
+};
+
+// Define daily targets locally
+const DAILY_TARGETS = {
+  calories: 2000,
+  protein: 50,    // in grams
+  carbs: 300,     // in grams
+  fat: 70         // in grams
 };
 
 export const NutritionTracker: React.FC = () => {
