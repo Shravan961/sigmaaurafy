@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, TrendingUp, Upload, Camera } from 'lucide-react';
+import { Search, Plus, TrendingUp, Upload, Camera, Loader2 } from 'lucide-react';
 import { useLocalNutrition } from '@/hooks/useLocalNutrition';
 import { useLocalSymptoms } from '@/hooks/useLocalSymptoms';
 import { nutritionService, analyzeFoodImage } from '@/services/nutritionService';
@@ -18,6 +18,7 @@ export const NutritionTracker: React.FC = () => {
   const [symptomQuery, setSymptomQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSymptomLoading, setIsSymptomLoading] = useState(false);
+  const [isImageAnalyzing, setIsImageAnalyzing] = useState(false);
   const [currentSymptomResult, setCurrentSymptomResult] = useState<any>(null);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,42 +60,183 @@ export const NutritionTracker: React.FC = () => {
     }
   };
 
+  const validateImageFile = (file: File): boolean => {
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select a valid image file (JPEG, PNG, WebP)');
+      return false;
+    }
+
+    // Check file size (max 10MB for Gemini API)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      toast.error('Image size too large. Please select an image smaller than 10MB.');
+      return false;
+    }
+
+    // Check minimum file size
+    if (file.size < 1024) { // 1KB minimum
+      toast.error('Image file appears to be corrupted or too small.');
+      return false;
+    }
+
+    return true;
+  };
+
+  const convertImageToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        if (!result) {
+          reject(new Error('Failed to read file'));
+          return;
+        }
+        // Extract base64 data without the data URL prefix
+        const base64Data = result.split(',')[1];
+        if (!base64Data) {
+          reject(new Error('Failed to extract base64 data'));
+          return;
+        }
+        resolve(base64Data);
+      };
+      reader.onerror = () => reject(new Error('File reading failed'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const analyzeImageWithGemini = async (file: File): Promise<string> => {
+    try {
+      if (!GEMINI_API_KEY) {
+        throw new Error('Gemini API key not configured');
+      }
+
+      const base64Data = await convertImageToBase64(file);
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              {
+                text: "Analyze this image and identify the food items. Provide a simple, clear description of the main food items visible that would be suitable for nutrition lookup. If multiple items are visible, list them separated by commas. Focus on the primary food items and be specific (e.g., 'grilled chicken breast' instead of just 'chicken'). If you cannot clearly identify food items in the image, respond with 'no clear food items identified'."
+              },
+              {
+                inline_data: {
+                  mime_type: file.type,
+                  data: base64Data
+                }
+              }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.1,
+            topK: 32,
+            topP: 1,
+            maxOutputTokens: 100,
+          },
+          safetySettings: [
+            {
+              category: "HARM_CATEGORY_HARASSMENT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_HATE_SPEECH", 
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Gemini API error response:', errorData);
+        
+        if (response.status === 400) {
+          throw new Error('Invalid image format or API request. Please try a different image.');
+        } else if (response.status === 403) {
+          throw new Error('API access denied. Please check your API key.');
+        } else if (response.status === 429) {
+          throw new Error('Too many requests. Please wait a moment and try again.');
+        } else {
+          throw new Error(`Gemini API error: ${response.status}`);
+        }
+      }
+
+      const data = await response.json();
+      
+      if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+        throw new Error('Invalid response structure from Gemini API');
+      }
+
+      const content = data.candidates[0].content;
+      if (!content.parts || !content.parts[0] || !content.parts[0].text) {
+        throw new Error('No text content in Gemini response');
+      }
+
+      const detectedFood = content.parts[0].text.trim();
+      
+      // Check if food was actually detected
+      if (!detectedFood || 
+          detectedFood.toLowerCase().includes('no clear food') ||
+          detectedFood.toLowerCase().includes('cannot identify') ||
+          detectedFood.toLowerCase().includes('unable to identify') ||
+          detectedFood.toLowerCase().includes('no food') ||
+          detectedFood.length < 3) {
+        throw new Error('No recognizable food items detected in the image');
+      }
+
+      return detectedFood;
+    } catch (error) {
+      console.error('Gemini image analysis error:', error);
+      throw error;
+    }
+  };
+
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please select a valid image file (JPEG, PNG)');
+    // Validate the file
+    if (!validateImageFile(file)) {
       return;
     }
 
-    if (file.size > 4 * 1024 * 1024) {
-      toast.error('Image size too large. Please select an image smaller than 4MB.');
-      return;
-    }
-
-    setIsLoading(true);
+    setIsImageAnalyzing(true);
+    
     try {
-      toast.info('Analyzing image...');
+      // Show initial processing message
+      toast.info('📸 Analyzing image...', { duration: 2000 });
       
-      const detectedFood = await analyzeFoodImage(file, GEMINI_API_KEY);
+      // Analyze the image with Gemini
+      const detectedFood = await analyzeImageWithGemini(file);
       
-      if (!detectedFood || detectedFood.toLowerCase().includes('no food') || detectedFood.toLowerCase().includes('unable to identify')) {
-        toast.error('Could not identify any food items in the image. Please try again or enter manually.');
-        return;
-      }
+      // Show what was detected
+      toast.success(`🔍 Detected: ${detectedFood}`, { duration: 3000 });
       
-      toast.info(`Detected: ${detectedFood}`, { duration: 3000 });
-      
+      // Get nutrition data for the detected food
       const result = await nutritionService.searchNutrition(detectedFood);
       
       if (!result || result.length === 0) {
-        toast.error('No nutrition data found for the detected food item');
+        toast.error('No nutrition data found for the detected food item. Try entering it manually.');
         return;
       }
 
+      // Create image URL for display
       const imageUrl = URL.createObjectURL(file);
 
+      // Create the nutrition entry
       const newEntry = {
         id: generateId(),
         query: `📷 ${detectedFood}`,
@@ -105,22 +247,30 @@ export const NutritionTracker: React.FC = () => {
       };
 
       addEntry(newEntry);
-      toast.success('Food image analyzed successfully!');
+      toast.success('✅ Food image analyzed and logged successfully!');
+      
     } catch (error) {
       console.error('Image analysis error:', error);
       
       let errorMessage = 'Unable to analyze image. Please try again or enter manually.';
       if (error instanceof Error) {
-        if (error.message.includes('400')) {
-          errorMessage = 'Invalid image format. Please try with a different image.';
-        } else if (error.message.includes('no food') || error.message.includes('not a food item')) {
-          errorMessage = 'No recognizable food items detected. Please try with a clearer image.';
+        if (error.message.includes('API key')) {
+          errorMessage = 'API configuration error. Please contact support.';
+        } else if (error.message.includes('Invalid image format')) {
+          errorMessage = 'Invalid image format. Please try with a JPEG or PNG image.';
+        } else if (error.message.includes('No recognizable food')) {
+          errorMessage = 'No food items detected. Please try with a clearer image of food.';
+        } else if (error.message.includes('Too many requests')) {
+          errorMessage = 'Service temporarily busy. Please wait a moment and try again.';
+        } else {
+          errorMessage = error.message;
         }
       }
       
       toast.error(errorMessage);
     } finally {
-      setIsLoading(false);
+      setIsImageAnalyzing(false);
+      // Clear the file input
       if (fileInputRef.current) fileInputRef.current.value = '';
       if (cameraInputRef.current) cameraInputRef.current.value = '';
     }
@@ -258,15 +408,19 @@ export const NutritionTracker: React.FC = () => {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Enter food item (e.g., apple, chicken breast, rice)"
-              disabled={isLoading}
-              onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleSearch()}
+              disabled={isLoading || isImageAnalyzing}
+              onKeyPress={(e) => e.key === 'Enter' && !isLoading && !isImageAnalyzing && handleSearch()}
               className="flex-1"
             />
             <Button 
               onClick={handleSearch} 
-              disabled={!query.trim() || isLoading}
+              disabled={!query.trim() || isLoading || isImageAnalyzing}
             >
-              {isLoading ? 'Searching...' : <Search className="h-4 w-4" />}
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
             </Button>
           </div>
 
@@ -277,6 +431,7 @@ export const NutritionTracker: React.FC = () => {
               type="file"
               accept="image/*"
               onChange={handleImageUpload}
+              disabled={isImageAnalyzing || isLoading}
               className="hidden"
             />
             <input
@@ -285,32 +440,56 @@ export const NutritionTracker: React.FC = () => {
               accept="image/*"
               capture="environment"
               onChange={handleImageUpload}
+              disabled={isImageAnalyzing || isLoading}
               className="hidden"
             />
             
             <Button
               variant="outline"
               onClick={() => fileInputRef.current?.click()}
-              disabled={isLoading}
+              disabled={isImageAnalyzing || isLoading}
               className="flex-1"
             >
-              <Upload className="h-4 w-4 mr-2" />
-              Upload Photo
+              {isImageAnalyzing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Photo
+                </>
+              )}
             </Button>
             
             <Button
               variant="outline"
               onClick={() => cameraInputRef.current?.click()}
-              disabled={isLoading}
+              disabled={isImageAnalyzing || isLoading}
               className="flex-1"
             >
-              <Camera className="h-4 w-4 mr-2" />
-              Take Photo
+              {isImageAnalyzing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Camera className="h-4 w-4 mr-2" />
+                  Take Photo
+                </>
+              )}
             </Button>
           </div>
 
           <div className="text-sm text-muted-foreground">
             📸 Use AI-powered image recognition to automatically identify and log your food
+            {isImageAnalyzing && (
+              <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-blue-700 dark:text-blue-300">
+                🔍 Analyzing image with Gemini AI... Please wait.
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
