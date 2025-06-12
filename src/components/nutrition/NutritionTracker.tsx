@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,11 +8,10 @@ import { useLocalSymptoms } from '@/hooks/useLocalSymptoms';
 import { nutritionService, analyzeFoodImage } from '@/services/nutritionService';
 import { lookupSymptom } from '@/api/symptomsClient';
 import { generateId, getTimestamp, formatDateTime } from '@/utils/helpers';
+import { GEMINI_API_KEY } from '@/utils/constants';
 import { toast } from "sonner";
 import { NutritionCard } from '@/components/nutrition/NutritionCard';
 import { SymptomCard } from '@/components/nutrition/SymptomCard';
-
-const GEMINI_API_KEY = 'AIzaSyB1ZBFMSVc9G5kypdkw91im9o4Rd3dBARw';
 
 export const NutritionTracker: React.FC = () => {
   const [query, setQuery] = useState('');
