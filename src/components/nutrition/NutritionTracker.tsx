@@ -24,27 +24,7 @@ import { nutritionService } from '@/services/nutritionService';
 import { lookupSymptom } from '@/api/symptomsClient';
 import { generateId, getTimestamp, formatDateTime } from '@/utils/helpers';
 import { NutritionEntry, NutritionItem, Symptom, SymptomResult } from '@/types/nutrition';
-
-// Mock Gemini service implementation
-const geminiService = {
-  analyzeImageForFood: async (file: File): Promise<string> => {
-    // This is a mock implementation - replace with actual Gemini API call
-    return new Promise((resolve, reject) => {
-      // Simulate API delay
-      setTimeout(() => {
-        try {
-          // Mock response - in a real app, this would call the actual API
-          const mockFoods = ['apple', 'sandwich', 'salad', 'pizza', 'chicken'];
-          const randomFood = mockFoods[Math.floor(Math.random() * mockFoods.length)];
-          resolve(randomFood);
-        } catch (error) {
-          console.error('Gemini API error:', error);
-          reject(new Error('Failed to analyze image. Please try again.'));
-        }
-      }, 1500);
-    });
-  }
-};
+import { GEMINI_API_KEY } from '@/utils/constants'; // Import the API key
 
 // Define daily targets locally
 const DAILY_TARGETS = {
@@ -52,6 +32,69 @@ const DAILY_TARGETS = {
   protein: 50,    // in grams
   carbs: 300,     // in grams
   fat: 70         // in grams
+};
+
+// Gemini service implementation
+const geminiService = {
+  analyzeImageForFood: async (file: File): Promise<string> => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // Convert image to base64
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = async () => {
+          const base64Data = (reader.result as string).split(',')[1];
+          
+          // Prepare the payload for Gemini API
+          const payload = {
+            contents: [{
+              parts: [
+                { text: "Identify the food item in this image. Respond ONLY with the exact food name in English. Do not include any descriptions, explanations, or additional text." },
+                {
+                  inline_data: {
+                    mime_type: file.type,
+                    data: base64Data
+                  }
+                }
+              ]
+            }]
+          };
+
+          // Call Gemini API
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error('Gemini API error:', errorData);
+            throw new Error(`API error: ${errorData.error?.message || 'Unknown error'}`);
+          }
+
+          const data = await response.json();
+          const foodName = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          
+          if (!foodName) {
+            throw new Error('Could not identify food from image');
+          }
+          
+          resolve(foodName);
+        };
+        
+        reader.onerror = (error) => {
+          reject(new Error('Failed to read image file'));
+        };
+        
+      } catch (error) {
+        console.error('Gemini API error:', error);
+        reject(new Error('Failed to analyze image. Please try again.'));
+      }
+    });
+  }
 };
 
 export const NutritionTracker: React.FC = () => {
